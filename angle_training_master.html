@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Angle Master - 1P & 2P</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .math-font {
+            font-family: 'Times New Roman', serif;
+            font-style: italic;
+        }
+
+        .hitbox {
+            transition: fill 0.1s, opacity 0.1s;
+        }
+        @media (hover: hover) {
+            .hitbox:hover { fill: #3b82f6; opacity: 0.3; }
+        }
+        .hitbox:active { fill: #3b82f6; opacity: 0.5; }
+        .wedge { transition: fill 0.2s ease; }
+
+        /* Animations */
+        @keyframes popIn {
+            0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+            40% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        .feedback-mark {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem; font-weight: bold;
+            pointer-events: none; z-index: 50; opacity: 0;
+            text-shadow: 0 0 20px rgba(255,255,255,0.9);
+        }
+        .feedback-anim { animation: popIn 0.5s ease-out forwards; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+        .penalty-shake {
+            animation: shake 0.2s ease-in-out 3;
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.5) inset !important;
+        }
+
+        .screen { display: none; }
+        .screen.active { display: flex; }
+        
+        .rank-S { color: #f59e0b; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+        .rank-A { color: #ef4444; }
+        .rank-B { color: #3b82f6; }
+        .rank-C { color: #10b981; }
+        .rank-D { color: #64748b; }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex items-center justify-center text-slate-800">
+
+    <div id="app-container" class="relative w-full max-w-md h-full sm:h-[850px] bg-white sm:rounded-3xl sm:shadow-2xl overflow-hidden flex flex-col border-4 border-transparent transition-all duration-300">
+        
+        <!-- ================= HOME SCREEN ================= -->
+        <div id="screen-home" class="screen active flex-col items-center justify-center p-6 h-full relative">
+            <div class="text-center mb-10">
+                <h1 class="text-4xl font-black text-slate-800 mb-2 leading-tight tracking-tight">
+                    ANGLE<br><span class="text-blue-600">MASTER</span>
+                </h1>
+                <p class="text-slate-500 font-bold text-sm">同位角・錯角・対頂角の特訓</p>
+            </div>
+            
+            <div class="w-full space-y-4">
+                <button id="btn-mode-1p" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-2xl shadow-[0_6px_0_#1d4ed8] active:shadow-[0_0px_0_#1d4ed8] active:translate-y-[6px] transition-all flex flex-col items-center justify-center gap-1">
+                    <span class="text-2xl">1人で特訓 (1P)</span>
+                    <span class="text-blue-200 text-sm font-normal">全10問タイムアタック</span>
+                </button>
+                
+                <button id="btn-mode-2p" class="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold py-5 rounded-2xl shadow-[0_6px_0_#be123c] active:shadow-[0_0px_0_#be123c] active:translate-y-[6px] transition-all flex flex-col items-center justify-center gap-1 mt-6">
+                    <span class="text-2xl">オンライン対戦 (2P)</span>
+                    <span class="text-rose-200 text-sm font-normal">友達と10点先取バトル</span>
+                </button>
+            </div>
+            
+            <!-- Auth Loading Overlay -->
+            <div id="auth-loading" class="absolute inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
+                <div class="text-blue-600 font-bold animate-pulse text-lg">システムに接続中...</div>
+            </div>
+        </div>
+
+        <!-- ================= LOBBY SCREEN (2P) ================= -->
+        <div id="screen-lobby" class="screen flex-col items-center justify-center p-6 h-full relative">
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-black text-slate-800 mb-2">オンライン対戦</h2>
+                <p class="text-slate-500 font-bold text-sm">部屋を作って友達を呼ぼう</p>
+            </div>
+            
+            <div class="w-full space-y-4 mb-8">
+                <div>
+                    <label class="block text-sm font-bold text-slate-600 mb-1">プレイヤー名</label>
+                    <input type="text" id="input-name" placeholder="名前を入力" class="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-lg focus:outline-none focus:border-rose-500 transition-colors text-center" maxlength="10">
+                </div>
+            </div>
+
+            <div class="w-full space-y-4 bg-slate-50 p-6 rounded-3xl border border-slate-200 shadow-sm">
+                <button id="btn-create" class="w-full bg-rose-500 hover:bg-rose-600 text-white font-bold py-4 rounded-xl shadow-[0_6px_0_#be123c] active:translate-y-[6px] active:shadow-[0_0px_0_#be123c] transition-all text-xl">
+                    部屋をつくる
+                </button>
+                
+                <div class="relative flex py-2 items-center">
+                    <div class="flex-grow border-t border-slate-300"></div>
+                    <span class="flex-shrink-0 mx-4 text-slate-400 text-sm font-bold">または</span>
+                    <div class="flex-grow border-t border-slate-300"></div>
+                </div>
+
+                <div class="flex gap-2">
+                    <input type="text" id="input-room-code" placeholder="4桁のコード" class="w-1/2 bg-white border-2 border-slate-200 rounded-xl px-4 py-3 font-bold text-xl text-center tracking-widest focus:outline-none focus:border-emerald-500" maxlength="4" pattern="\d*">
+                    <button id="btn-join" class="w-1/2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 rounded-xl shadow-[0_6px_0_#047857] active:translate-y-[6px] active:shadow-[0_0px_0_#047857] transition-all text-lg">
+                        参加する
+                    </button>
+                </div>
+            </div>
+            
+            <div id="lobby-error" class="text-rose-500 font-bold mt-4 h-6 text-sm"></div>
+            <button id="btn-back-home1" class="mt-4 text-slate-400 font-bold underline">戻る</button>
+        </div>
+
+        <!-- ================= WAITING SCREEN (2P) ================= -->
+        <div id="screen-waiting" class="screen flex-col items-center justify-center p-6 h-full text-center">
+            <h2 class="text-2xl font-bold text-slate-700 mb-2">あなたのルームコード</h2>
+            <div class="text-7xl font-black text-rose-500 tracking-widest mb-8 py-4 px-8 bg-rose-50 border-4 border-rose-100 rounded-3xl" id="display-room-code">----</div>
+            
+            <div class="animate-pulse flex flex-col items-center">
+                <div class="w-12 h-12 border-4 border-slate-300 border-t-rose-500 rounded-full animate-spin mb-4"></div>
+                <p class="text-slate-500 font-bold">対戦相手を待っています...</p>
+            </div>
+            
+            <button id="btn-cancel-wait" class="mt-12 text-slate-400 font-bold hover:text-slate-600 underline">キャンセルして戻る</button>
+        </div>
+
+        <!-- ================= GAME SCREEN ================= -->
+        <div id="screen-game" class="screen flex-col h-full bg-slate-50 relative">
+            <!-- HEADER: 1P or 2P specific -->
+            <div class="bg-white shadow-sm border-b border-slate-200 px-4 py-3 z-10 flex flex-col justify-center" id="game-header-container">
+                <!-- 1P Header -->
+                <div id="header-1p" class="hidden flex justify-between items-center w-full">
+                    <div class="text-slate-500 font-bold">問題: <span id="p1-q-count" class="text-blue-600 text-xl">1/10</span></div>
+                    <div class="text-3xl font-black text-slate-700 font-mono" id="p1-timer">00.00</div>
+                </div>
+                <!-- 2P Header -->
+                <div id="header-2p" class="hidden w-full space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span id="name-host" class="font-bold text-sm w-16 truncate text-blue-600">P1</span>
+                        <div class="flex-grow bg-slate-100 h-4 rounded-full overflow-hidden relative">
+                            <div id="bar-host" class="bg-blue-500 h-full w-0 transition-all duration-300 ease-out"></div>
+                        </div>
+                        <span id="score-host" class="font-black text-lg w-6 text-right text-slate-700">0</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="name-guest" class="font-bold text-sm w-16 truncate text-rose-500">P2</span>
+                        <div class="flex-grow bg-slate-100 h-4 rounded-full overflow-hidden relative">
+                            <div id="bar-guest" class="bg-rose-500 h-full w-0 transition-all duration-300 ease-out"></div>
+                        </div>
+                        <span id="score-guest" class="font-black text-lg w-6 text-right text-slate-700">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 問題文エリア -->
+            <div class="px-6 pt-4 pb-2 text-center z-10">
+                <div id="parallel-hint" class="text-xs font-bold text-slate-400 mb-1 h-4"><!-- 並行/非並行のヒント --></div>
+                <h2 class="text-lg md:text-xl font-bold text-slate-700 bg-white py-3 px-2 rounded-2xl shadow border border-slate-200">
+                    角 <span id="q-target" class="math-font text-3xl text-emerald-500 mx-1">a</span> の 
+                    <span id="q-type" class="text-blue-600 mx-1 border-b-2 border-blue-600">同位角</span> は？
+                </h2>
+            </div>
+
+            <!-- ペナルティ時の赤幕 -->
+            <div id="penalty-overlay" class="absolute inset-0 bg-red-500/20 z-40 hidden backdrop-blur-[2px]">
+                <div class="absolute inset-0 flex items-center justify-center text-red-600 font-black text-4xl">1秒ペナルティ!</div>
+            </div>
+
+            <!-- 図形描画エリア (SVG) -->
+            <div class="flex-grow flex items-center justify-center p-4 relative">
+                <div id="feedback-o" class="feedback-mark text-green-500 hidden z-50 drop-shadow-lg">◯</div>
+                <div id="feedback-x" class="feedback-mark text-red-500 hidden z-50 drop-shadow-lg">✕</div>
+
+                <div class="w-full max-w-[340px] aspect-square relative bg-white rounded-3xl shadow border border-slate-100 flex items-center justify-center overflow-visible">
+                    <svg id="math-svg" viewBox="0 0 300 300" class="w-full h-full overflow-visible"></svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= RESULT SCREEN ================= -->
+        <div id="screen-result" class="screen flex-col items-center justify-center p-6 h-full text-center relative overflow-hidden">
+            <div id="result-bg" class="absolute inset-0 z-0"></div>
+
+            <div class="z-10 bg-white/95 backdrop-blur p-8 rounded-3xl shadow-xl border border-white/50 w-full max-w-sm">
+                
+                <!-- 1P Result Content -->
+                <div id="res-content-1p" class="hidden flex-col items-center">
+                    <h2 class="text-xl font-bold text-slate-500 mb-2">クリアランク</h2>
+                    <div id="res-1p-rank" class="text-7xl font-black mb-4 rank-S">S</div>
+                    <div class="w-full bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 mb-6 text-lg">
+                        <div class="flex justify-between">
+                            <span class="text-slate-600 font-bold">タイム</span>
+                            <span id="res-1p-time" class="font-black font-mono">12.34s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-600 font-bold">ミス回数</span>
+                            <span id="res-1p-mistakes" class="font-black text-rose-500">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2P Result Content -->
+                <div id="res-content-2p" class="hidden flex-col items-center">
+                    <h2 id="res-2p-title" class="text-5xl font-black mb-2 tracking-wider">YOU WIN!</h2>
+                    <p id="res-2p-subtitle" class="text-slate-600 font-bold mb-6">おめでとうございます</p>
+                    
+                    <div class="w-full space-y-3 mb-6">
+                        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <span id="res-name-host" class="font-bold text-blue-600">P1</span>
+                            <span id="res-score-host" class="font-black text-2xl">10</span>
+                        </div>
+                        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <span id="res-name-guest" class="font-bold text-rose-500">P2</span>
+                            <span id="res-score-guest" class="font-black text-2xl">7</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Common Buttons -->
+                <div class="space-y-3 w-full">
+                    <button id="btn-review" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl shadow-[0_4px_0_#047857] active:translate-y-[4px] active:shadow-[0_0px_0_#047857] transition-all text-lg hidden">
+                        間違えた問題を復習
+                    </button>
+                    <button id="btn-return-home" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow-[0_4px_0_#0f172a] active:translate-y-[4px] active:shadow-[0_0px_0_#0f172a] transition-all text-lg">
+                        タイトルへ戻る
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= REVIEW SCREEN ================= -->
+        <div id="screen-review" class="screen flex-col h-full bg-white relative">
+            <div class="bg-slate-800 text-white px-6 py-4 flex items-center justify-between shadow-md z-10">
+                <h2 class="text-xl font-bold">復習レポート</h2>
+                <button id="btn-close-review" class="text-slate-300 hover:text-white font-bold">閉じる</button>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto p-6 bg-slate-50">
+                <p class="text-slate-500 font-bold mb-4 text-sm">間違えた問題の一覧です。正しい位置関係を確認しましょう。</p>
+                <div id="review-list" class="space-y-4">
+                    <!-- JS generated content -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Environment Setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'geometry-master-app';
+        let firebaseConfig = {};
+        let customToken = null;
+        
+        if (typeof __firebase_config !== 'undefined') {
+            firebaseConfig = JSON.parse(__firebase_config);
+        }
+        if (typeof __initial_auth_token !== 'undefined') {
+            customToken = __initial_auth_token;
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        let currentUser = null;
+
+        // ================= GAME LOGIC & GEOMETRY =================
+        const SVG_NS = "http://www.w3.org/2000/svg";
+
+        // Math definitions
+        const standardQuestionPairs = [
+            // 同位角
+            { t: 'a', type: '同位角', a: 'e' }, { t: 'e', type: '同位角', a: 'a' },
+            { t: 'b', type: '同位角', a: 'f' }, { t: 'f', type: '同位角', a: 'b' },
+            { t: 'c', type: '同位角', a: 'g' }, { t: 'g', type: '同位角', a: 'c' },
+            { t: 'd', type: '同位角', a: 'h' }, { t: 'h', type: '同位角', a: 'd' },
+            // 錯角 (内角のみ)
+            { t: 'c', type: '錯角', a: 'f' }, { t: 'f', type: '錯角', a: 'c' },
+            { t: 'd', type: '錯角', a: 'e' }, { t: 'e', type: '錯角', a: 'd' },
+            // 対頂角
+            { t: 'a', type: '対頂角', a: 'd' }, { t: 'd', type: '対頂角', a: 'a' },
+            { t: 'b', type: '対頂角', a: 'c' }, { t: 'c', type: '対頂角', a: 'b' },
+            { t: 'e', type: '対頂角', a: 'h' }, { t: 'h', type: '対頂角', a: 'e' },
+            { t: 'f', type: '対頂角', a: 'g' }, { t: 'g', type: '対頂角', a: 'f' }
+        ];
+
+        const horizontalQuestionPairs = [
+            // 同位角 (水平パターン)
+            { t: 'p', type: '同位角', a: 't' }, { t: 't', type: '同位角', a: 'p' },
+            { t: 's', type: '同位角', a: 'w' }, { t: 'w', type: '同位角', a: 's' },
+            { t: 'q', type: '同位角', a: 'u' }, { t: 'u', type: '同位角', a: 'q' },
+            { t: 'r', type: '同位角', a: 'v' }, { t: 'v', type: '同位角', a: 'r' },
+            // 錯角 (内角: 直線lとmの間)
+            { t: 's', type: '錯角', a: 'u' }, { t: 'u', type: '錯角', a: 's' },
+            { t: 'r', type: '錯角', a: 't' }, { t: 't', type: '錯角', a: 'r' },
+            // 対頂角
+            { t: 'p', type: '対頂角', a: 'r' }, { t: 'r', type: '対頂角', a: 'p' },
+            { t: 's', type: '対頂角', a: 'q' }, { t: 'q', type: '対頂角', a: 's' },
+            { t: 't', type: '対頂角', a: 'v' }, { t: 'v', type: '対頂角', a: 't' },
+            { t: 'w', type: '対頂角', a: 'u' }, { t: 'u', type: '対頂角', a: 'w' }
+        ];
+
+        let isParallelCurrent = true;
+        let currentLayoutType = 'standard';
+
+        // Convert polar to cartesian for SVG paths
+        function polarToCartesian(cx, cy, r, angleInDegrees) {
+            const angleInRadians = angleInDegrees * Math.PI / 180.0;
+            return { x: cx + (r * Math.cos(angleInRadians)), y: cy + (r * Math.sin(angleInRadians)) };
+        }
+
+        // Create wedge path strictly keeping angles correct
+        function createWedgePath(cx, cy, r, startAngle, endAngle) {
+            let e = endAngle;
+            while (e <= startAngle) e += 360;
+            const start = polarToCartesian(cx, cy, r, startAngle);
+            const end = polarToCartesian(cx, cy, r, e);
+            const largeArcFlag = e - startAngle <= 180 ? "0" : "1";
+            return `M ${cx} ${cy} L ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y} Z`;
+        }
+
+        // Get line segment spanning across SVG
+        function getLineSpan(cx, cy, angleDeg) {
+            const rad = angleDeg * Math.PI / 180;
+            const r = 250; 
+            return {
+                x1: cx - r * Math.cos(rad), y1: cy - r * Math.sin(rad),
+                x2: cx + r * Math.cos(rad), y2: cy + r * Math.sin(rad)
+            };
+        }
+
+        // Generate geometry dynamically
+        function generateGeometry(isParallel, layoutType = 'standard') {
+            if (layoutType === 'horizontal') {
+                const cx1 = 90, cy1 = 150;
+                const cx2 = 210, cy2 = 150;
+                const theta1 = -70; // 左の斜め線 (約70度)
+                const theta2 = isParallel ? -70 : -45; // 右の斜め線
+
+                const lines = [
+                    getLineSpan(150, 150, 0), // 横断線 n (水平)
+                    getLineSpan(cx1, cy1, theta1), // 直線 l
+                    getLineSpan(cx2, cy2, theta2)  // 直線 m
+                ];
+
+                const buildHorizRegions = (cx, cy, th, ids) => {
+                    const thNorm = th < 0 ? th + 360 : th; // ex: 290
+                    const opNorm = (thNorm + 180) % 360;   // ex: 110
+                    return [
+                        { id: ids[0], cx, cy, start: 180, end: thNorm },      // Top-Left (p, t)
+                        { id: ids[1], cx, cy, start: thNorm, end: 360 },      // Top-Right (s, w)
+                        { id: ids[2], cx, cy, start: opNorm, end: 180 },      // Bottom-Left (q, u)
+                        { id: ids[3], cx, cy, start: 0, end: opNorm }         // Bottom-Right (r, v)
+                    ];
+                };
+
+                const regions = [
+                    ...buildHorizRegions(cx1, cy1, theta1, ['p','s','q','r']),
+                    ...buildHorizRegions(cx2, cy2, theta2, ['t','w','u','v'])
+                ];
+
+                return { lines, regions };
+            }
+
+            // Standard layout
+            const cx1 = 120, cy1 = 100;
+            const cx2 = 160, cy2 = 210;
+            
+            // Transversal angle derived from the two intersection points
+            const phi = Math.atan2(cy2 - cy1, cx2 - cx1) * 180 / Math.PI; // ~70 deg
+            
+            const theta1 = isParallel ? 0 : 15;
+            const theta2 = isParallel ? 0 : -8;
+
+            const lines = [
+                getLineSpan(cx1, cy1, theta1),
+                getLineSpan(cx2, cy2, theta2),
+                getLineSpan(140, 155, phi) // Transversal roughly centered
+            ];
+
+            // Map angle names based on quadrants relative to lines
+            const buildRegions = (cx, cy, theta, ids) => [
+                { id: ids[3], cx, cy, start: theta, end: phi },                 // d, h (Bottom-Right)
+                { id: ids[2], cx, cy, start: phi, end: 180 + theta },           // c, g (Bottom-Left)
+                { id: ids[0], cx, cy, start: 180 + theta, end: 180 + phi },     // a, e (Top-Left)
+                { id: ids[1], cx, cy, start: 180 + phi, end: 360 + theta }      // b, f (Top-Right)
+            ];
+
+            const regions = [
+                ...buildRegions(cx1, cy1, theta1, ['a','b','c','d']),
+                ...buildRegions(cx2, cy2, theta2, ['e','f','g','h'])
+            ];
+
+            return { lines, regions };
+        }
+
+        function drawSVG(isParallel, layoutType) {
+            const svg = document.getElementById('math-svg');
+            svg.innerHTML = ''; 
+            
+            const geo = generateGeometry(isParallel, layoutType);
+
+            // Draw Lines
+            geo.lines.forEach(l => {
+                const line = document.createElementNS(SVG_NS, "line");
+                line.setAttribute("x1", l.x1); line.setAttribute("y1", l.y1);
+                line.setAttribute("x2", l.x2); line.setAttribute("y2", l.y2);
+                line.setAttribute("stroke", "#334155"); line.setAttribute("stroke-width", "4"); line.setAttribute("stroke-linecap", "round");
+                svg.appendChild(line);
+            });
+
+            // Draw Angles (Wedges, Hitboxes, Text)
+            geo.regions.forEach(a => {
+                // Wedge display
+                const wedge = document.createElementNS(SVG_NS, "path");
+                wedge.setAttribute("id", `wedge-${a.id}`);
+                wedge.setAttribute("d", createWedgePath(a.cx, a.cy, 35, a.start, a.end));
+                wedge.setAttribute("fill", "rgba(148, 163, 184, 0.2)"); 
+                wedge.setAttribute("class", "wedge");
+                svg.appendChild(wedge);
+
+                // Label Text
+                const text = document.createElementNS(SVG_NS, "text");
+                let midAngle = (a.start + a.end) / 2;
+                if(a.end < a.start) midAngle = (a.start + a.end + 360) / 2;
+                const textPos = polarToCartesian(a.cx, a.cy, 52, midAngle);
+                text.setAttribute("x", textPos.x); text.setAttribute("y", textPos.y + 8);
+                text.setAttribute("text-anchor", "middle"); text.setAttribute("font-size", "28");
+                text.setAttribute("fill", "#1e293b"); text.setAttribute("class", "math-font pointer-events-none");
+                text.textContent = a.id;
+                svg.appendChild(text);
+
+                // Hitbox for tapping
+                const hitbox = document.createElementNS(SVG_NS, "path");
+                hitbox.setAttribute("d", createWedgePath(a.cx, a.cy, 75, a.start, a.end));
+                hitbox.setAttribute("fill", "transparent");
+                hitbox.setAttribute("class", "hitbox cursor-pointer");
+                hitbox.onclick = () => window.handleHitboxClick(a.id);
+                svg.appendChild(hitbox);
+            });
+        }
+
+        // ================= STATE =================
+        let mode = '1p'; // '1p' or '2p'
+        let myCurrentQuestion = null;
+        let myScore = 0;
+        let isPenalized = false;
+        let isGameOver = false;
+        let localMistakes = [];
+        const MAX_SCORE = 10;
+
+        // 1P Mode State
+        let p1TimerInterval = null;
+        let p1StartTime = 0;
+        let p1ElapsedTime = 0;
+
+        // 2P Mode State
+        let currentRoomId = null;
+        let isHost = false;
+        let roomUnsubscribe = null;
+
+        // ================= UI ROUTING =================
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function showError(msg) {
+            const err = document.getElementById('lobby-error');
+            err.textContent = msg;
+            setTimeout(() => { err.textContent = ''; }, 3000);
+        }
+
+        // ================= AUTH =================
+        async function initAuth() {
+            try {
+                if (customToken) await signInWithCustomToken(auth, customToken);
+                else await signInAnonymously(auth);
+                
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUser = user;
+                        document.getElementById('auth-loading').style.display = 'none';
+                    }
+                });
+            } catch (error) {
+                console.error("Auth Error:", error);
+                document.getElementById('auth-loading').textContent = "認証エラーが発生しました";
+            }
+        }
+        initAuth();
+
+        // ================= EVENT LISTENERS =================
+        document.getElementById('btn-mode-1p').addEventListener('click', () => { mode = '1p'; start1PGame(); });
+        document.getElementById('btn-mode-2p').addEventListener('click', () => { mode = '2p'; showScreen('screen-lobby'); });
+        document.getElementById('btn-back-home1').addEventListener('click', () => showScreen('screen-home'));
+        
+        document.getElementById('btn-return-home').addEventListener('click', () => {
+            if(roomUnsubscribe) roomUnsubscribe();
+            currentRoomId = null;
+            document.getElementById('app-container').classList.remove('penalty-shake');
+            showScreen('screen-home');
+        });
+
+        document.getElementById('btn-review').addEventListener('click', showReviewScreen);
+        document.getElementById('btn-close-review').addEventListener('click', () => showScreen('screen-result'));
+
+        // ================= 1P MODE LOGIC =================
+        function start1PGame() {
+            showScreen('screen-game');
+            document.getElementById('header-1p').classList.remove('hidden');
+            document.getElementById('header-2p').classList.add('hidden');
+            
+            myScore = 0;
+            localMistakes = [];
+            isGameOver = false;
+            isPenalized = false;
+            p1StartTime = Date.now();
+            
+            update1PUI();
+            
+            p1TimerInterval = setInterval(() => {
+                if(isGameOver) return;
+                p1ElapsedTime = (Date.now() - p1StartTime) / 1000;
+                document.getElementById('p1-timer').textContent = p1ElapsedTime.toFixed(2);
+            }, 50);
+
+            generateQuestion();
+        }
+
+        function update1PUI() {
+            document.getElementById('p1-q-count').textContent = `${Math.min(myScore + 1, MAX_SCORE)}/${MAX_SCORE}`;
+        }
+
+        function end1PGame() {
+            isGameOver = true;
+            clearInterval(p1TimerInterval);
+            showScreen('screen-result');
+            
+            document.getElementById('res-content-1p').classList.remove('hidden');
+            document.getElementById('res-content-1p').classList.add('flex');
+            document.getElementById('res-content-2p').classList.add('hidden');
+            document.getElementById('res-content-2p').classList.remove('flex');
+            
+            const time = p1ElapsedTime;
+            const mistakes = localMistakes.length;
+            
+            let rank = 'D';
+            if (time <= 15 && mistakes === 0) rank = 'S';
+            else if (time <= 25 && mistakes === 0) rank = 'A';
+            else if (time <= 35 && mistakes <= 1) rank = 'B';
+            else if (time <= 50 && mistakes <= 2) rank = 'C';
+
+            const rankEl = document.getElementById('res-1p-rank');
+            rankEl.textContent = rank;
+            rankEl.className = `text-7xl font-black mb-4 rank-${rank}`;
+            
+            document.getElementById('res-1p-time').textContent = time.toFixed(2) + 's';
+            document.getElementById('res-1p-mistakes').textContent = mistakes;
+            
+            document.getElementById('result-bg').className = "absolute inset-0 z-0 bg-gradient-to-tr from-slate-100 via-white to-blue-50";
+            
+            toggleReviewButton();
+        }
+
+        // ================= 2P MULTIPLAYER LOGIC =================
+        document.getElementById('btn-create').addEventListener('click', async () => {
+            if (!currentUser) return;
+            const name = document.getElementById('input-name').value.trim() || 'Player1';
+            const roomCode = Math.floor(1000 + Math.random() * 9000).toString();
+            
+            try {
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                await setDoc(roomRef, {
+                    createdAt: new Date().getTime(),
+                    status: 'waiting',
+                    host: { uid: currentUser.uid, name: name, score: 0 },
+                    guest: null, winner: null
+                });
+                currentRoomId = roomCode;
+                isHost = true;
+                document.getElementById('display-room-code').textContent = roomCode;
+                showScreen('screen-waiting');
+                listenToRoom(roomCode);
+            } catch (e) { showError("作成エラー"); }
+        });
+
+        document.getElementById('btn-join').addEventListener('click', async () => {
+            if (!currentUser) return;
+            const name = document.getElementById('input-name').value.trim() || 'Player2';
+            const roomCode = document.getElementById('input-room-code').value.trim();
+            if (roomCode.length !== 4) return showError("4桁入力必須");
+
+            try {
+                const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+                const snap = await getDoc(roomRef);
+                if (!snap.exists()) return showError("部屋なし");
+                if (snap.data().status !== 'waiting') return showError("進行中");
+
+                await updateDoc(roomRef, {
+                    status: 'playing',
+                    guest: { uid: currentUser.uid, name: name, score: 0 }
+                });
+                currentRoomId = roomCode;
+                isHost = false;
+                listenToRoom(roomCode);
+            } catch (e) { showError("参加エラー"); }
+        });
+
+        document.getElementById('btn-cancel-wait').addEventListener('click', () => {
+            if(roomUnsubscribe) roomUnsubscribe();
+            currentRoomId = null;
+            showScreen('screen-lobby');
+        });
+
+        function listenToRoom(roomCode) {
+            const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', roomCode);
+            roomUnsubscribe = onSnapshot(roomRef, (docSnap) => {
+                if (!docSnap.exists()) return;
+                const data = docSnap.data();
+                
+                if (data.status === 'playing') {
+                    if (!document.getElementById('screen-game').classList.contains('active')) start2PGame(data);
+                    update2PState(data);
+                } else if (data.status === 'finished') {
+                    update2PState(data);
+                    if (!isGameOver) end2PGame(data);
+                }
+            }, (err) => console.error(err));
+        }
+
+        function start2PGame(data) {
+            showScreen('screen-game');
+            document.getElementById('header-1p').classList.add('hidden');
+            document.getElementById('header-2p').classList.remove('hidden');
+            
+            isGameOver = false;
+            isPenalized = false;
+            myScore = 0;
+            localMistakes = [];
+            
+            document.getElementById('name-host').textContent = data.host.name;
+            document.getElementById('name-guest').textContent = data.guest.name;
+            
+            generateQuestion();
+        }
+
+        function update2PState(data) {
+            const sh = data.host.score || 0;
+            const sg = (data.guest && data.guest.score) ? data.guest.score : 0;
+            document.getElementById('score-host').textContent = sh;
+            document.getElementById('bar-host').style.width = `${(sh / MAX_SCORE) * 100}%`;
+            document.getElementById('score-guest').textContent = sg;
+            document.getElementById('bar-guest').style.width = `${(sg / MAX_SCORE) * 100}%`;
+            myScore = isHost ? sh : sg;
+        }
+
+        function end2PGame(data) {
+            isGameOver = true;
+            showScreen('screen-result');
+            
+            document.getElementById('res-content-1p').classList.add('hidden');
+            document.getElementById('res-content-1p').classList.remove('flex');
+            document.getElementById('res-content-2p').classList.remove('hidden');
+            document.getElementById('res-content-2p').classList.add('flex');
+            
+            const isWin = (data.winner === currentUser.uid);
+            const title = document.getElementById('res-2p-title');
+            const bg = document.getElementById('result-bg');
+            
+            if (isWin) {
+                title.textContent = "YOU WIN!";
+                title.className = "text-5xl font-black mb-2 tracking-wider text-transparent bg-clip-text bg-gradient-to-br from-yellow-400 to-amber-600 drop-shadow-md";
+                document.getElementById('res-2p-subtitle').textContent = "素晴らしい勝利です！";
+                bg.className = "absolute inset-0 z-0 bg-gradient-to-tr from-yellow-50 via-white to-amber-100";
+            } else {
+                title.textContent = "YOU LOSE...";
+                title.className = "text-5xl font-black mb-2 tracking-wider text-slate-500 drop-shadow-md";
+                document.getElementById('res-2p-subtitle').textContent = "次は勝てるはず！";
+                bg.className = "absolute inset-0 z-0 bg-gradient-to-tr from-slate-100 via-white to-slate-200";
+            }
+            
+            document.getElementById('res-name-host').textContent = data.host.name;
+            document.getElementById('res-score-host').textContent = data.host.score;
+            document.getElementById('res-name-guest').textContent = data.guest.name;
+            document.getElementById('res-score-guest').textContent = data.guest.score;
+            
+            toggleReviewButton();
+        }
+
+        // ================= SHARED GAME LOGIC =================
+        function generateQuestion() {
+            if (isGameOver) return;
+            
+            // 7問目以降(インデックス7,8,9)は水平レイアウトに変更
+            currentLayoutType = (myScore >= 7) ? 'horizontal' : 'standard';
+
+            // Randomize parallel vs non-parallel
+            isParallelCurrent = Math.random() > 0.5;
+            drawSVG(isParallelCurrent, currentLayoutType);
+
+            // Set hint text
+            const hint = document.getElementById('parallel-hint');
+            hint.textContent = isParallelCurrent ? "※ 線は 平行 です" : "※ 線は 平行ではありません";
+            hint.className = isParallelCurrent ? "text-xs font-bold text-blue-500 mb-1 h-4" : "text-xs font-bold text-amber-500 mb-1 h-4";
+
+            // Pick question based on layout
+            const questionPool = currentLayoutType === 'horizontal' ? horizontalQuestionPairs : standardQuestionPairs;
+            myCurrentQuestion = questionPool[Math.floor(Math.random() * questionPool.length)];
+            
+            document.getElementById('q-target').textContent = myCurrentQuestion.t;
+            document.getElementById('q-type').textContent = myCurrentQuestion.type;
+
+            // Highlight target wedge
+            document.querySelectorAll('.wedge').forEach(w => w.setAttribute("fill", "rgba(148, 163, 184, 0.2)"));
+            document.getElementById(`wedge-${myCurrentQuestion.t}`).setAttribute("fill", "rgba(16, 185, 129, 0.6)");
+        }
+
+        window.handleHitboxClick = async (angleId) => {
+            if (isGameOver || isPenalized || !myCurrentQuestion) return;
+
+            const isCorrect = (angleId === myCurrentQuestion.a);
+            
+            if (isCorrect) {
+                // Correct
+                showFeedback(true);
+                document.getElementById(`wedge-${angleId}`).setAttribute("fill", "rgba(59, 130, 246, 0.8)");
+                myScore++;
+                
+                if (mode === '1p') {
+                    if (myScore >= MAX_SCORE) {
+                        end1PGame();
+                    } else {
+                        update1PUI();
+                        setTimeout(generateQuestion, 150);
+                    }
+                } else if (mode === '2p' && currentUser && currentRoomId) {
+                    const updatePath = isHost ? "host.score" : "guest.score";
+                    const roomRef = doc(db, 'artifacts', appId, 'public', 'data', 'rooms', currentRoomId);
+                    try {
+                        if (myScore >= MAX_SCORE) {
+                            await updateDoc(roomRef, { [updatePath]: myScore, status: 'finished', winner: currentUser.uid });
+                        } else {
+                            await updateDoc(roomRef, { [updatePath]: myScore });
+                            setTimeout(generateQuestion, 150);
+                        }
+                    } catch (e) {}
+                }
+            }
+            
+            if (!isCorrect) {
+                // Wrong - Record mistake and penalize
+                localMistakes.push({
+                    qStr: `角${myCurrentQuestion.t} の ${myCurrentQuestion.type}`,
+                    qT: myCurrentQuestion.t,
+                    ans: angleId,
+                    correct: myCurrentQuestion.a,
+                    isParallel: isParallelCurrent,
+                    layoutType: currentLayoutType
+                });
+                
+                showFeedback(false);
+                isPenalized = true;
+                
+                const container = document.getElementById('app-container');
+                const overlay = document.getElementById('penalty-overlay');
+                
+                container.classList.add('penalty-shake');
+                overlay.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    container.classList.remove('penalty-shake');
+                    overlay.classList.add('hidden');
+                    isPenalized = false;
+                }, 1000);
+            }
+        };
+
+        function showFeedback(isCorrect) {
+            const el = document.getElementById(isCorrect ? 'feedback-o' : 'feedback-x');
+            el.classList.remove('hidden', 'feedback-anim');
+            void el.offsetWidth;
+            el.classList.add('feedback-anim');
+            setTimeout(() => {
+                el.classList.add('hidden');
+                el.classList.remove('feedback-anim');
+            }, 500);
+        }
+
+        // ================= REVIEW LOGIC =================
+        function toggleReviewButton() {
+            const btn = document.getElementById('btn-review');
+            if (localMistakes.length > 0) {
+                btn.classList.remove('hidden');
+                btn.textContent = `間違えた問題を復習 (${localMistakes.length}問)`;
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+
+        function showReviewScreen() {
+            const list = document.getElementById('review-list');
+            list.innerHTML = '';
+            
+            localMistakes.forEach((m, i) => {
+                const div = document.createElement('div');
+                div.className = "bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-2";
+                
+                // SVGを生成して図形を描画
+                const svg = document.createElementNS(SVG_NS, "svg");
+                svg.setAttribute("viewBox", "0 0 300 300");
+                svg.setAttribute("class", "w-full max-w-[200px] h-auto mx-auto my-2 border border-slate-100 rounded-xl bg-slate-50");
+
+                const geo = generateGeometry(m.isParallel, m.layoutType);
+                
+                // 線を描画
+                geo.lines.forEach(l => {
+                    const line = document.createElementNS(SVG_NS, "line");
+                    line.setAttribute("x1", l.x1); line.setAttribute("y1", l.y1);
+                    line.setAttribute("x2", l.x2); line.setAttribute("y2", l.y2);
+                    line.setAttribute("stroke", "#94a3b8"); line.setAttribute("stroke-width", "3");
+                    svg.appendChild(line);
+                });
+
+                // 角を描画
+                geo.regions.forEach(a => {
+                    let fillColor = "transparent";
+                    if(a.id === m.qT) fillColor = "rgba(16, 185, 129, 0.3)"; // 基準の角（緑薄め）
+                    if(a.id === m.correct) fillColor = "rgba(59, 130, 246, 0.7)"; // 正解（青）
+                    if(a.id === m.ans) fillColor = "rgba(239, 68, 68, 0.7)"; // 間違え（赤）
+
+                    if(fillColor !== "transparent") {
+                        const wedge = document.createElementNS(SVG_NS, "path");
+                        wedge.setAttribute("d", createWedgePath(a.cx, a.cy, 45, a.start, a.end));
+                        wedge.setAttribute("fill", fillColor);
+                        svg.appendChild(wedge);
+                    }
+
+                    // 文字ラベル
+                    const text = document.createElementNS(SVG_NS, "text");
+                    let midAngle = (a.start + a.end) / 2;
+                    if(a.end < a.start) midAngle = (a.start + a.end + 360) / 2;
+                    const textPos = polarToCartesian(a.cx, a.cy, 60, midAngle);
+                    text.setAttribute("x", textPos.x); text.setAttribute("y", textPos.y + 6);
+                    text.setAttribute("text-anchor", "middle"); text.setAttribute("font-size", "18");
+                    text.setAttribute("fill", "#64748b"); text.setAttribute("class", "math-font");
+                    text.textContent = a.id;
+                    svg.appendChild(text);
+                });
+
+                div.innerHTML = `
+                    <div class="font-bold text-slate-700 text-lg border-b border-slate-100 pb-2">Q. ${m.qStr}</div>
+                    <div class="svg-container flex justify-center py-2"></div>
+                    <div class="flex justify-between items-center px-2 pt-1 text-sm">
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 bg-emerald-500 opacity-40 inline-block rounded-full border border-emerald-600"></span>基準の角</div>
+                        <div class="font-black text-emerald-500 text-xl math-font">${m.qT}</div>
+                    </div>
+                    <div class="flex justify-between items-center px-2 text-sm">
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 bg-red-500 opacity-70 inline-block rounded-full"></span>あなたの解答</div>
+                        <div class="font-black text-rose-500 text-xl math-font">${m.ans}</div>
+                    </div>
+                    <div class="flex justify-between items-center px-2 text-sm">
+                        <div class="flex items-center gap-1"><span class="w-3 h-3 bg-blue-500 opacity-70 inline-block rounded-full"></span>正解</div>
+                        <div class="font-black text-blue-500 text-xl math-font">${m.correct}</div>
+                    </div>
+                `;
+                div.querySelector('.svg-container').appendChild(svg);
+                list.appendChild(div);
+            });
+            showScreen('screen-review');
+        }
+
+    </script>
+</body>
+</html>
